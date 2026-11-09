@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 	"text/tabwriter"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -52,20 +53,22 @@ func report() {
 	}
 
 	type line struct {
-		port   int
-		addr   string
-		res    probe.Result
-		isLLM  bool
-		proc   string
+		port  int
+		addr  string
+		res   probe.Result
+		isLLM bool
+		proc  string
+		exe   string
 	}
 	var lines []line
 	for _, l := range ls {
 		res := probe.Probe(probe.Target{Addr: l.Addr(), Port: l.Port})
-		proc := "-"
+		proc, exe := "-", "-"
 		if p, ok := owners[l.Inode]; ok {
 			proc = fmt.Sprintf("#%d %s (%s)", p.PID, p.Name, p.Mem())
+			exe = p.Exe
 		}
-		lines = append(lines, line{port: l.Port, addr: l.Addr(), res: res, isLLM: res.IsLLM, proc: proc})
+		lines = append(lines, line{port: l.Port, addr: l.Addr(), res: res, isLLM: res.IsLLM, proc: proc, exe: exe})
 	}
 	sort.Slice(lines, func(i, j int) bool {
 		if lines[i].isLLM != lines[j].isLLM {
@@ -75,7 +78,7 @@ func report() {
 	})
 
 	w := tabwriter.NewWriter(os.Stdout, 2, 4, 2, ' ', 0)
-	fmt.Fprintln(w, "ENDPOINT\tENGINE\tSTATUS\tMODEL\tCTX\tQUANT\tPROCESS/RSS")
+	fmt.Fprintln(w, "ENDPOINT\tENGINE\tCONF\tSTATUS\tMODEL\tCTX\tQUANT\tPROCESS/RSS\tAPP PATH")
 	for _, ln := range lines {
 		model, ctx, quant := "-", "-", "-"
 		engine := "-"
@@ -96,8 +99,12 @@ func report() {
 				quant = ln.res.Quant
 			}
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			ln.addr, engine, status, model, ctx, quant, ln.proc)
+		conf := "-"
+		if ln.res.Confidence != "" {
+			conf = ln.res.Confidence
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			ln.addr, engine, conf, status, model, ctx, quant, ln.proc, ln.exe)
 	}
 	w.Flush()
 
@@ -106,6 +113,18 @@ func report() {
 			continue
 		}
 		fmt.Printf("\n=== %s (%s) ===\n", ln.addr, ln.res.EngineSummary())
+		if ln.res.Confidence != "" {
+			fmt.Printf("confidence: %s\n", ln.res.Confidence)
+		}
+		for _, ev := range ln.res.Evidence {
+			fmt.Printf("evidence:   %s\n", ev)
+		}
+		if len(ln.res.Surface) > 0 {
+			fmt.Printf("surface:    %s\n", strings.Join(ln.res.Surface, ", "))
+		}
+		if ln.exe != "-" {
+			fmt.Printf("app path:   %s\n", ln.exe)
+		}
 		for _, ep := range ln.res.Endpoints {
 			fmt.Printf("-- %s %s (HTTP %d)\n%s\n", ep.Name, ep.Path, ep.Status, ep.Body)
 		}

@@ -130,6 +130,7 @@ func fromHexDigit(c byte) (byte, bool) {
 type Process struct {
 	PID     int
 	Name    string
+	Exe     string
 	Cmdline string
 	RSSKB   int
 }
@@ -200,6 +201,9 @@ func readProcess(pid int) Process {
 	p := Process{PID: pid}
 	if b, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", pid)); err == nil {
 		p.Name = strings.TrimSpace(string(b))
+	}
+	if exe, err := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid)); err == nil {
+		p.Exe = exe
 	}
 	if b, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid)); err == nil {
 		p.Cmdline = strings.ReplaceAll(string(b), "\x00", " ")

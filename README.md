@@ -31,24 +31,31 @@ common AI server runtimes:
 | **ComfyUI** | `GET /system_stats`, `GET /queue` | version, OS, Python, GPU + VRAM |
 | **Generic health** | `GET /health`, `GET /healthz` | liveness only |
 
-For every confirmed provider it extracts as much as the JSON gives up:
-engine + version, model names, context window, quantization level,
-parameter size, architecture — and maps the port to its owning process with
-PID and resident memory.
+For every provider it extracts as much as the JSON gives up: engine + version,
+model names, context window, quantization level, parameter size, architecture —
+and maps the port to its owning process with PID, resident memory and the
+executable path (`/proc/<pid>/exe`).
+
+An engine **name** is only printed when the response has a shape that product
+emits. Shared surfaces (`/v1/models`, `/health`, `/version`, an
+`/api/tags`-shaped reply) identify an API, not a product, so those rows read
+`unknown` and the reason is recorded as evidence — `d` shows the tier
+(`confirmed` / `probable`), the evidence, and the API surfaces that answered.
 
 ## Dashboard
 
 ```text
 llmnrf — local LLM endpoint scanner
 
-   ENDPOINT                  ENGINE                     STATUS     MODEL                        CTX     QUANT    PROCESS / RSS
- > 127.0.0.1:28080           llama.cpp server [openai]  ● running  mistral-7b-instruct-v0.3.Q5  32768   -        #4821 llama-server 2.4 GiB
-   127.0.0.1:21434           Ollama [openai+anthropic]  ● running  qwen3:8b                     -       Q4_K_M   #4812 ollama 21.3 MiB
-   127.0.0.1:21888           ComfyUI 0.3.45             ● running  -                            -       -        #4903 python3 512.7 MiB
-   127.0.0.1:29999           -                          listener   -                            -       -        #4755 python3 12.1 MiB
-   127.0.0.1:5432            -                          listener   -                            -       -        #1902 postgres 143.8 MiB
+   ENDPOINT            ENGINE                        CONF       STATUS     MODEL                       CTX     QUANT  PROCESS / RSS
+ > 127.0.0.1:28080     llama.cpp server [openai]     confirmed  ● running  mistral-7b-instruct-v0.3.Q5 32768   -      #4821 llama-server 2.4 GiB
+   127.0.0.1:21434     Ollama 0.33.1 [openai]        confirmed  ● running  qwen3:8b                    -       Q4_K_M #4812 ollama 21.3 MiB
+   127.0.0.1:21888     ComfyUI 0.3.45                confirmed  ● running  -                           -       -      #4903 python3 512.7 MiB
+   127.0.0.1:21435     unknown [openai+anthropic]    -          ● running  someproxy:latest            -       -      #4812 someproxy 21.3 MiB
+   127.0.0.1:5432      -                             -          listener   -                           -       -      #1902 postgres 143.8 MiB
 
- 3 LLM provider(s), 2 other listener(s) · enter=raw JSON · r=rescan · q=quit
+ 3 LLM provider(s), 2 other listener(s) · 5/5 shown · j/k move · d=detail · enter=raw JSON · r=rescan · q=quit
+ scanned 14:02:11 · next refresh in 22s
 ```
 
 ## Usage
@@ -63,14 +70,24 @@ Keys in the TUI:
 | Key | Action |
 |---|---|
 | `j` / `k`, arrows | move selection |
+| `d` | detail: identity, confidence, evidence, owning process and app path, then the raw JSON |
 | `enter` | raw JSON of every probed endpoint on the selected row |
-| `r` | rescan |
+| `r` | rescan now |
 | `esc` | back |
 | `q` | quit |
 
 Rows that can't be parsed still land in the raw-JSON view (pretty-printed when
 valid JSON), and each port's combined capture is written to
 `$TMPDIR/llmnrf-<port>.json`, linked inline with an OSC-8 terminal hyperlink.
+
+## Refresh and sizing
+
+The dashboard re-scans every 30 seconds on its own; the footer shows when the
+last scan finished and when the next one runs. A background refresh keeps the
+previous results on screen until the new ones arrive, and the cursor stays on
+the same endpoint. Columns shrink to fit the terminal (nothing wraps), and the
+list scrolls to keep the selection in view. `AutoRefresh` is one constant in
+`internal/ui/ui.go`.
 
 ## Privacy
 
